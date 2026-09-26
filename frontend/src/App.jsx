@@ -1,122 +1,87 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useEffect, useState } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { Navbar } from './views/components/Navbar.jsx';
+import { AuthPage } from './views/pages/AuthPage.jsx';
+import { StudentDashboard } from './views/pages/StudentDashboard.jsx';
+import { AdminDashboard } from './views/pages/AdminDashboard.jsx';
+import { authApi } from './services/apiClient.js';
 
-function App() {
-  const [count, setCount] = useState(0)
+const AppContent = () => {
+  const { user, loading, checkAuth } = useAuth();
+  const [initialAuthScreen, setInitialAuthScreen] = useState('login');
+  const [verificationFeedback, setVerificationFeedback] = useState(null);
 
+  // Check URL query parameters for email verification or password reset links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authAction = params.get('auth');
+    const token = params.get('token');
+    const email = params.get('email');
+
+    if (authAction === 'verify-token' && token) {
+      authApi.verifyEmail(token, email)
+        .then(() => {
+          setInitialAuthScreen('verified');
+          checkAuth();
+        })
+        .catch((err) => {
+          setVerificationFeedback(err.message || 'Verification link expired or invalid.');
+          setInitialAuthScreen('verify');
+        });
+    } else if (authAction === 'reset' && token) {
+      setInitialAuthScreen('reset');
+    }
+  }, [checkAuth]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', height: '100vh', color: '#1b4338', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="brandmark" style={{ margin: '0 auto 16px' }}>Σ</div>
+          <p style={{ fontSize: '15px', color: '#63736e' }}>Loading Semester GPA System...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in -> Show Authentication Page
+  if (!user) {
+    return (
+      <div>
+        <Navbar />
+        {verificationFeedback && (
+          <div style={{ maxWidth: '600px', margin: '20px auto', padding: '0 20px' }}>
+            <div className="auth-error">{verificationFeedback}</div>
+          </div>
+        )}
+        <AuthPage initialScreen={initialAuthScreen} />
+      </div>
+    );
+  }
+
+  // Logged in as Administrator
+  if (user.role === 'admin') {
+    return (
+      <div>
+        <Navbar />
+        <AdminDashboard />
+      </div>
+    );
+  }
+
+  // Logged in as Student
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div>
+      <Navbar />
+      <StudentDashboard />
+    </div>
+  );
+};
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
 }
-
-export default App
