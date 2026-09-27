@@ -32,6 +32,16 @@ export class UserController {
       next(error);
     }
   }
+
+  async deleteUser(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = await userService.deleteUser(id, req.user);
+      return successResponse(res, result, result.message, 200);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const userController = new UserController();

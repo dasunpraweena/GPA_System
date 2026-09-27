@@ -8,6 +8,8 @@ const router = Router();
 router.post('/register', authLimiter, authController.register);
 router.get('/verify', authController.verifyEmail);
 router.post('/verify', authController.verifyEmail);
+router.get('/verify-email', authController.verifyEmail);
+router.post('/verify-email', authController.verifyEmail);
 router.post('/resend-verification', authLimiter, authController.resendVerification);
 router.post('/login', authLimiter, authController.login);
 router.post('/forgot-password', authLimiter, authController.forgotPassword);

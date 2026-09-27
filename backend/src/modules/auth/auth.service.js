@@ -48,44 +48,42 @@ export class AuthService {
       throw new AppError('Invalid email format: Could not determine your student registration number from the email address.', 400);
     }
 
-    // 4. Check if email already registered
-    const existingEmail = await authRepository.findByEmail(trimmedEmail);
-    if (existingEmail) {
-      throw new AppError('An account with this university email already exists.', 409);
+    // 4. Check if ALREADY VERIFIED in the active system (users table)
+    const existingActiveUser = await authRepository.findByEmail(trimmedEmail);
+    if (existingActiveUser) {
+      throw new AppError('An account with this university email is already registered and active. Please log in directly.', 409);
     }
 
-    // 5. Check if registration number already registered
     const existingReg = await authRepository.findByRegNo(regNo);
     if (existingReg) {
-      throw new AppError(`Registration number ${regNo} is already linked to another account. Exception flagged for administrator review.`, 409);
+      throw new AppError(`Registration number ${regNo} is already linked to an active account. Exception flagged for administrator review.`, 409);
     }
 
-    // 6. Hash password
+    // 5. Hash password
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // 7. Generate single-use verification token (expires in 24 hours)
+    // 6. Generate single-use verification token (expires in 24 hours)
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const userId = await authRepository.createStudent({
+    // 7. Save into pending_verifications ONLY - DO NOT add to users table until verified!
+    await authRepository.savePendingRegistration({
       fullName: fullName.trim(),
       email: trimmedEmail,
       regNo,
       passwordHash,
       verificationToken,
-      verificationExpires
+      expiresAt
     });
 
-    // 8. Dispatch email
+    // 8. Dispatch verification email
     const verifyUrl = await sendVerificationEmail(trimmedEmail, verificationToken);
 
     return {
-      userId,
       email: trimmedEmail,
       regNo,
-      message: 'Account created successfully. A verification link has been sent to your university mailbox.',
-      // In development or when SMTP not set, expose the verify link for automated or interactive ease
+      message: 'A verification link has been sent to your university mailbox. Your account will be added to the system upon email verification.',
       verifyUrl: config.nodeEnv === 'development' || !config.email.host ? verifyUrl : undefined
     };
   }
@@ -95,23 +93,21 @@ export class AuthService {
       throw new AppError('Verification token is required.', 400);
     }
 
-    const user = await authRepository.findByVerificationToken(token);
-    if (!user) {
-      throw new AppError('Verification link is invalid or has expired. Please request a new verification link.', 400);
+    // 1. Check pending_verifications
+    const pending = await authRepository.findPendingByToken(token);
+    if (pending) {
+      // Create user in main users table now that email ownership is verified!
+      const newUserId = await authRepository.createVerifiedUserFromPending(pending);
+      return {
+        userId: newUserId,
+        email: pending.university_email,
+        regNo: pending.student_reg_no,
+        message: 'University email confirmed! Your account has been created and verified. You may now log in.'
+      };
     }
 
-    await authRepository.verifyUser(user.id);
-
-    // Link any pending exam branch results imported prior to registration
-    if (user.student_reg_no) {
-      await authRepository.linkExistingExamResults(user.id, user.student_reg_no);
-    }
-
-    return {
-      email: user.university_email,
-      regNo: user.student_reg_no,
-      message: 'University email successfully verified. You may now log in to access your results.'
-    };
+    // 2. Check if user was already verified earlier
+    throw new AppError('Verification link is invalid or has expired. If you already verified, please log in. Otherwise, please register again.', 400);
   }
 
   async resendVerification(email) {
@@ -119,24 +115,36 @@ export class AuthService {
       throw new AppError('Please provide your university email.', 400);
     }
 
-    const user = await authRepository.findByEmail(email.trim());
-    if (!user) {
-      // Generic message to avoid email enumeration
-      return { message: 'If an unverified account exists, a new verification link has been sent.' };
+    const trimmedEmail = email.trim().toLowerCase();
+
+    // Check if already active user
+    const active = await authRepository.findByEmail(trimmedEmail);
+    if (active) {
+      throw new AppError('This account is already registered and verified. Please log in directly.', 400);
     }
 
-    if (user.is_verified) {
-      throw new AppError('This account is already verified. Please log in directly.', 400);
+    // Check pending
+    const pending = await authRepository.findPendingByEmail(trimmedEmail);
+    if (!pending) {
+      return { message: 'If a pending registration exists, a verification link has been sent.' };
     }
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    await authRepository.setResetToken(user.id, verificationToken, verificationExpires);
-    const verifyUrl = await sendVerificationEmail(user.university_email, verificationToken);
+    await authRepository.savePendingRegistration({
+      fullName: pending.full_name,
+      email: pending.university_email,
+      regNo: pending.student_reg_no,
+      passwordHash: pending.password_hash,
+      verificationToken,
+      expiresAt
+    });
+
+    const verifyUrl = await sendVerificationEmail(trimmedEmail, verificationToken);
 
     return {
-      message: 'A new verification link has been sent to your email.',
+      message: 'A new verification link has been dispatched to your email.',
       verifyUrl: config.nodeEnv === 'development' || !config.email.host ? verifyUrl : undefined
     };
   }
@@ -149,19 +157,38 @@ export class AuthService {
     const trimmedEmail = email.trim().toLowerCase();
     const user = await authRepository.findByEmail(trimmedEmail);
 
-    // Generic error to prevent enumeration
+    // If not in active users, check if there is a pending unverified registration
     if (!user) {
+      const pending = await authRepository.findPendingByEmail(trimmedEmail);
+      if (pending) {
+        // Send fresh verification link
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await authRepository.savePendingRegistration({
+          fullName: pending.full_name,
+          email: pending.university_email,
+          regNo: pending.student_reg_no,
+          passwordHash: pending.password_hash,
+          verificationToken,
+          expiresAt
+        });
+        const verifyUrl = await sendVerificationEmail(trimmedEmail, verificationToken);
+
+        const err = new AppError('Your account is pending email verification. A fresh verification link has been dispatched.', 403);
+        err.data = {
+          unverified: true,
+          email: trimmedEmail,
+          verifyUrl: config.nodeEnv === 'development' || !config.email.host ? verifyUrl : undefined
+        };
+        throw err;
+      }
+
       throw new AppError('Invalid email or password.', 401);
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       throw new AppError('Invalid email or password.', 401);
-    }
-
-    // Prevent unverified accounts from accessing student data
-    if (!user.is_verified && user.role !== 'admin') {
-      throw new AppError('Your university email is not verified yet. Please check your inbox or click resend verification.', 403);
     }
 
     const token = this.generateToken(user);

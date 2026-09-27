@@ -26,33 +26,73 @@ export class AuthRepository {
     return rows[0] || null;
   }
 
-  async createStudent({ fullName, email, regNo, passwordHash, verificationToken, verificationExpires }) {
-    const [result] = await pool.query(
-      `INSERT INTO users 
-       (full_name, university_email, student_reg_no, password_hash, role, is_verified, verification_token, verification_expires)
-       VALUES (?, ?, ?, ?, 'student', FALSE, ?, ?)`,
-      [fullName, email.toLowerCase(), regNo ? regNo.toUpperCase() : null, passwordHash, verificationToken, verificationExpires]
+  // --- Pending Registrations (Without verification, do not add to users table) ---
+  async savePendingRegistration({ fullName, email, regNo, passwordHash, verificationToken, expiresAt }) {
+    await pool.query(
+      `INSERT INTO pending_verifications 
+       (full_name, university_email, student_reg_no, password_hash, verification_token, expires_at)
+       VALUES (?, LOWER(?), UPPER(?), ?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+         full_name = VALUES(full_name),
+         student_reg_no = VALUES(student_reg_no),
+         password_hash = VALUES(password_hash),
+         verification_token = VALUES(verification_token),
+         expires_at = VALUES(expires_at),
+         created_at = CURRENT_TIMESTAMP`,
+      [fullName, email, regNo, passwordHash, verificationToken, expiresAt]
     );
-    return result.insertId;
   }
 
-  async findByVerificationToken(token) {
+  async findPendingByToken(token) {
     const [rows] = await pool.query(
-      'SELECT * FROM users WHERE verification_token = ? AND verification_expires > NOW()',
+      'SELECT * FROM pending_verifications WHERE verification_token = ? AND expires_at > NOW()',
       [token]
     );
     return rows[0] || null;
   }
 
-  async verifyUser(id) {
-    await pool.query(
-      `UPDATE users 
-       SET is_verified = TRUE, verification_token = NULL, verification_expires = NULL 
-       WHERE id = ?`,
-      [id]
+  async findPendingByEmail(email) {
+    const [rows] = await pool.query(
+      'SELECT * FROM pending_verifications WHERE LOWER(university_email) = LOWER(?)',
+      [email]
     );
+    return rows[0] || null;
   }
 
+  async createVerifiedUserFromPending(pending) {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        `INSERT INTO users 
+         (full_name, university_email, student_reg_no, password_hash, role, is_verified)
+         VALUES (?, LOWER(?), UPPER(?), ?, 'student', TRUE)`,
+        [pending.full_name, pending.university_email, pending.student_reg_no, pending.password_hash]
+      );
+
+      const newUserId = result.insertId;
+
+      // Link any prior exam branch results
+      await connection.query(
+        'UPDATE exam_results SET user_id = ? WHERE UPPER(student_reg_no) = UPPER(?) AND user_id IS NULL',
+        [newUserId, pending.student_reg_no]
+      );
+
+      // Remove from pending_verifications
+      await connection.query('DELETE FROM pending_verifications WHERE id = ?', [pending.id]);
+
+      await connection.commit();
+      return newUserId;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+  }
+
+  // --- Password Reset & Verification Fallbacks ---
   async findByResetToken(token) {
     const [rows] = await pool.query(
       'SELECT * FROM users WHERE reset_token = ? AND reset_expires > NOW()',
@@ -72,14 +112,6 @@ export class AuthRepository {
     await pool.query(
       'UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?',
       [passwordHash, id]
-    );
-  }
-
-  async linkExistingExamResults(userId, regNo) {
-    if (!regNo) return;
-    await pool.query(
-      'UPDATE exam_results SET user_id = ? WHERE UPPER(student_reg_no) = UPPER(?) AND user_id IS NULL',
-      [userId, regNo]
     );
   }
 }

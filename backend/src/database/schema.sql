@@ -4,7 +4,7 @@
 CREATE DATABASE IF NOT EXISTS gpa_system_db;
 USE gpa_system_db;
 
--- 1. Users Table
+-- 1. Users Table (Verified Active Users Only)
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   full_name VARCHAR(150) NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   student_reg_no VARCHAR(50) UNIQUE NULL,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('student', 'admin') NOT NULL DEFAULT 'student',
-  is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  is_verified BOOLEAN NOT NULL DEFAULT TRUE,
   verification_token VARCHAR(255) NULL,
   verification_expires DATETIME NULL,
   reset_token VARCHAR(255) NULL,
@@ -23,7 +23,20 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Curriculum Subjects Table
+-- 2. Pending Registrations Table (Users waiting for email verification)
+-- Unverified accounts reside here and DO NOT enter the main users table until verified
+CREATE TABLE IF NOT EXISTS pending_verifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  full_name VARCHAR(150) NOT NULL,
+  university_email VARCHAR(150) NOT NULL UNIQUE,
+  student_reg_no VARCHAR(50) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  verification_token VARCHAR(255) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3. Curriculum Subjects Table
 CREATE TABLE IF NOT EXISTS curriculum_subjects (
   id INT AUTO_INCREMENT PRIMARY KEY,
   year_no INT NOT NULL,
@@ -38,7 +51,7 @@ CREATE TABLE IF NOT EXISTS curriculum_subjects (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Student Course Enrollments (Personal Elective Selections & Student-entered Grades)
+-- 4. Student Course Enrollments (Personal Elective Selections & Student-entered Grades)
 CREATE TABLE IF NOT EXISTS student_course_enrollments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
@@ -52,7 +65,7 @@ CREATE TABLE IF NOT EXISTS student_course_enrollments (
   FOREIGN KEY (subject_id) REFERENCES curriculum_subjects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Uploaded Result PDF Files Metadata
+-- 5. Uploaded Result PDF Files Metadata
 CREATE TABLE IF NOT EXISTS imported_files (
   id INT AUTO_INCREMENT PRIMARY KEY,
   filename VARCHAR(255) NOT NULL,
@@ -68,7 +81,7 @@ CREATE TABLE IF NOT EXISTS imported_files (
   FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5. Exam Branch Results (Authoritative, takes precedence in calculations)
+-- 6. Exam Branch Results (Authoritative, takes precedence in calculations)
 CREATE TABLE IF NOT EXISTS exam_results (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NULL,
@@ -88,7 +101,7 @@ CREATE TABLE IF NOT EXISTS exam_results (
   FOREIGN KEY (import_file_id) REFERENCES imported_files(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 6. Import Audit History (Record previous vs new result values)
+-- 7. Import Audit History (Record previous vs new result values)
 CREATE TABLE IF NOT EXISTS import_audit_history (
   id INT AUTO_INCREMENT PRIMARY KEY,
   import_file_id INT NULL,
@@ -104,7 +117,7 @@ CREATE TABLE IF NOT EXISTS import_audit_history (
   FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 7. Curriculum Audit History (Admin changes to credits or GPA status)
+-- 8. Curriculum Audit History (Admin changes to credits or GPA status)
 CREATE TABLE IF NOT EXISTS curriculum_audit_history (
   id INT AUTO_INCREMENT PRIMARY KEY,
   subject_id INT NOT NULL,

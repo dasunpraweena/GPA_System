@@ -58,6 +58,26 @@ export class UserService {
     await userRepository.flagUserForReview(userId, reason || 'Flagged by administrator');
     return { message: 'Student account flagged for administrative review.' };
   }
+
+  async deleteUser(userId, adminUser) {
+    if (adminUser.role !== 'admin') {
+      throw new AppError('Forbidden: Only administrators can remove users.', 403);
+    }
+
+    if (adminUser.id === Number(userId)) {
+      throw new AppError('You cannot delete your own administrator account.', 400);
+    }
+
+    const user = await userRepository.getUserById(userId);
+    if (!user) {
+      throw new AppError('User not found.', 404);
+    }
+
+    await userRepository.deleteUser(userId);
+    return {
+      message: `User ${user.full_name} (${user.student_reg_no || user.university_email}) was successfully removed from the system.`
+    };
+  }
 }
 
 export const userService = new UserService();

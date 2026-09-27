@@ -40,6 +40,10 @@ export class UserRepository {
       [id]
     );
   }
+
+  async deleteUser(id) {
+    await pool.query('DELETE FROM users WHERE id = ?', [id]);
+  }
 }
 
 export const userRepository = new UserRepository();

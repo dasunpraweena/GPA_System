@@ -239,21 +239,19 @@ export const AuthPage = ({ initialScreen = 'login', onVerifiedSuccess }) => {
             {previewUrl && (
               <a
                 href={previewUrl}
-                target="_blank"
-                rel="noreferrer"
                 className="primary"
                 style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginBottom: '14px' }}
               >
-                Open Verification Link
+                Click to Verify Email & Continue
               </a>
             )}
 
             <button
               type="button"
               className="primary"
-              onClick={() => switchScreen('verified')}
+              onClick={() => switchScreen('login')}
             >
-              I have confirmed my email
+              Continue to Login
             </button>
 
             <div className="auth-bottom">

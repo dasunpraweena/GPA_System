@@ -92,6 +92,14 @@ export const useAuthViewModel = (initialScreen = 'login') => {
     try {
       await contextLogin(authEmail.trim(), password);
     } catch (err) {
+      if (err.data?.unverified || (err.message && err.message.includes('not verified'))) {
+        if (err.data?.verifyUrl) {
+          setPreviewUrl(err.data.verifyUrl);
+        }
+        switchScreen('verify');
+        setFeedback('Your email is not verified yet. We have sent a verification link.');
+        return;
+      }
       setError(err.message || 'Invalid email or password.');
     } finally {
       setIsSubmitting(false);

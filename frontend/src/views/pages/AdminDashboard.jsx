@@ -214,6 +214,16 @@ export const AdminDashboard = () => {
                           >
                             View details
                           </button>
+                          {u.role !== 'Administrator' && (
+                            <button
+                              type="button"
+                              className="editbtn"
+                              style={{ marginLeft: '8px', color: '#b14242', borderColor: '#f5c6cb' }}
+                              onClick={() => usersVM.openDeleteModal(u)}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -221,6 +231,12 @@ export const AdminDashboard = () => {
                 </tbody>
               </table>
             </div>
+
+            {usersVM.feedback && (
+              <div style={{ marginTop: '16px', color: '#2e6245', fontSize: '14px', fontWeight: 500 }}>
+                {usersVM.feedback}
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -622,6 +638,38 @@ export const AdminDashboard = () => {
                 onClick={importVM.applyResults}
               >
                 {importVM.isApplying ? 'Applying...' : 'Apply results'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE USER CONFIRMATION MODAL */}
+      {usersVM.isDeleteModalOpen && usersVM.userToDelete && (
+        <div className="modal-backdrop" onClick={usersVM.closeDeleteModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ color: '#b14242' }}>Remove Student Account?</h2>
+            <p>
+              Are you sure you want to remove <strong>{usersVM.userToDelete.name}</strong> ({usersVM.userToDelete.email}) from the system?
+            </p>
+            <p style={{ fontSize: '13px', color: '#718079' }}>
+              This will permanently remove their user account and all personal grade entries from MySQL.
+            </p>
+
+            {usersVM.error && <div className="auth-error">{usersVM.error}</div>}
+
+            <div className="actions">
+              <button type="button" className="add" onClick={usersVM.closeDeleteModal}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                style={{ background: '#b14242' }}
+                disabled={usersVM.isDeleting}
+                onClick={usersVM.confirmDeleteUser}
+              >
+                {usersVM.isDeleting ? 'Removing...' : 'Remove User'}
               </button>
             </div>
           </div>

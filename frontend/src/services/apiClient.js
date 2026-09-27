@@ -61,7 +61,8 @@ export const curriculumApi = {
 export const usersApi = {
   getAllUsers: (search) => request(`/users${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   getUserDetails: (id) => request(`/users/${id}`),
-  flagUser: (id, reason) => request(`/users/${id}/flag`, { method: 'PATCH', body: JSON.stringify({ reason }) })
+  flagUser: (id, reason) => request(`/users/${id}/flag`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
+  deleteUser: (id) => request(`/users/${id}`, { method: 'DELETE' })
 };
 
 export const importsApi = {
